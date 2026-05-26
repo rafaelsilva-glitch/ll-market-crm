@@ -8,7 +8,36 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY não configurada.' });
 
-  const prompt = `Liste 10 condomínios residenciais reais em ${cidade}${bairro ? `, ${bairro}` : ''} com mais de ${minUnidades} unidades. Responda SOMENTE com JSON array, sem explicações, sem markdown:\n[{"nome":"...","endereco":"...","bairro":"...","cidade":"${cidade}","telefone":null,"email":null,"administradora":null,"unidades":300}]`;
+  const regiao = bairro ? `${bairro}, ${cidade}` : cidade;
+
+  const prompt = `Você é um especialista em mercado imobiliário brasileiro.
+
+Liste 20 condomínios residenciais reais localizados EXCLUSIVAMENTE em ${regiao} com mais de ${minUnidades} unidades.
+
+IMPORTANTE: Traga APENAS condomínios que ficam em ${regiao}. Não inclua condomínios de outras cidades ou bairros.
+
+Para cada condomínio, inclua:
+- telefone: telefone real da portaria ou administradora (se não souber, use null)
+- email: email real (se não souber, use null)
+- administradora: nome da empresa administradora (se não souber, use null)
+- contato: se não tiver telefone nem email, coloque "Visita presencial"
+- status: "Existente" se o condomínio já existe há mais de 2 anos, ou "Lançamento recente" se foi lançado nos últimos 2 anos
+- renda: "Alta" para condomínios de alto padrão/luxo, "Media" para padrão médio, "Baixa" para HIS/MCMV/popular
+
+Responda SOMENTE com JSON array:
+[{
+  "nome": "Nome real do condomínio",
+  "endereco": "Endereço completo com rua e número",
+  "bairro": "Bairro exato em ${regiao}",
+  "cidade": "${cidade}",
+  "telefone": "telefone ou null",
+  "email": "email ou null",
+  "administradora": "nome ou null",
+  "contato": "telefone disponível ou Visita presencial",
+  "unidades": 300,
+  "status": "Existente",
+  "renda": "Media"
+}]`;
 
   try {
     const r = await fetch(
@@ -18,9 +47,9 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { 
-            temperature: 0.1, 
-            maxOutputTokens: 4096,
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 8192,
             responseMimeType: 'application/json'
           }
         })
@@ -34,7 +63,6 @@ export default async function handler(req, res) {
       .join('')
       .trim();
 
-    // Retorna o texto bruto — o frontend vai fazer o parse
     res.status(200).json({ text: rawText });
   } catch (e) {
     res.status(500).json({ error: e.message });
