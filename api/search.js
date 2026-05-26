@@ -24,25 +24,24 @@ module.exports = async function handler(req, res) {
 
     const regiao = bairro ? `${bairro}, ${cidade}` : cidade;
 
-    const prompt = `Pesquise no Google e liste condomínios residenciais REAIS em ${regiao} com mais de ${minUnidades} unidades. Busque nomes reais, endereços reais, telefones reais de portaria ou administradora.
+    const prompt = `Pesquise no Google e liste condomínios residenciais REAIS localizados em ${regiao} com mais de ${minUnidades} unidades.
 
-Retorne SOMENTE um array JSON (sem markdown, sem texto antes ou depois):
-[
-  {
-    "nome": "Nome real do condomínio",
-    "endereco": "Endereço completo real",
-    "bairro": "Bairro real em ${regiao}",
-    "cidade": "${cidade}",
-    "telefone": "telefone real ou null",
-    "email": "email real ou null",
-    "administradora": "nome real da administradora ou null",
-    "unidades": numero_inteiro,
-    "status": "Existente ou Lançamento recente",
-    "renda": "Alta, Media ou Baixa"
-  }
-]
+Para cada condomínio:
+- nome: nome real e completo
+- endereco: endereço completo com rua e número
+- bairro: bairro exato em ${regiao}
+- cidade: ${cidade}
+- telefone: telefone real da portaria ou administradora (procure no Google Maps, site da construtora ou administradora)
+- email: email real se encontrar, senão null
+- administradora: nome da administradora ou construtora responsável
+- unidades: número OBRIGATÓRIO — se não souber o exato, ESTIME com base no número de torres × andares × apartamentos por andar. Todo condomínio deve ter um número inteiro estimado.
+- status: "Lançamento recente" se entregue nos últimos 3 anos, senão "Existente"
+- renda: "Alta" para alto padrão/luxo (ticket acima de R$800k), "Media" para médio padrão (R$300k-R$800k), "Baixa" para popular/HIS/MCMV (abaixo de R$300k)
 
-Liste 15 condomínios reais. Apenas de ${regiao}. SOMENTE o JSON.`;
+Retorne APENAS o array JSON, sem markdown, sem texto:
+[{"nome":"...","endereco":"...","bairro":"...","cidade":"${cidade}","telefone":null,"email":null,"administradora":null,"unidades":300,"status":"Existente","renda":"Media"}]
+
+Liste 15 condomínios reais apenas de ${regiao}. SOMENTE o JSON.`;
 
     const postData = JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
