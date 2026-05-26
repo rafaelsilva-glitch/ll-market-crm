@@ -1,3 +1,5 @@
+const https = require('https');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -5,7 +7,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
   try {
-    let body = req.body;
+    let body = req.body || {};
     if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch(e) { body = {}; }
     }
@@ -16,45 +18,46 @@ module.exports = async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no Vercel.' });
+      res.status(500).json({ error: 'GEMINI_API_KEY não configurada.' });
+      return;
     }
 
     const regiao = bairro ? `${bairro}, ${cidade}` : cidade;
+    const prompt = `Liste 20 condomínios residenciais reais em ${regiao} com mais de ${minUnidades} unidades. Somente de ${regiao}. Inclua: nome, endereco, bairro, cidade, telefone (ou null), email (ou null), administradora (ou null), unidades (número), status (Existente ou Lançamento recente), renda (Alta, Media ou Baixa). Retorne APENAS JSON array válido.`;
 
-    const prompt = `Liste 20 condomínios residenciais reais localizados EXCLUSIVAMENTE em ${regiao} com mais de ${minUnidades} unidades. Apenas de ${regiao}, não de outros lugares. Para cada um: nome, endereço, bairro, telefone (ou null), email (ou null), administradora (ou null), número de unidades, se é Existente ou Lançamento recente, e perfil de renda (Alta/Media/Baixa). Retorne APENAS JSON array.`;
+    const postData = JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+    });
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
+    const result = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-            responseMimeType: 'application/json'
-          }
-        })
-      }
-    );
-
-    const data = await geminiRes.json();
-
-    if (!geminiRes.ok) {
-      return res.status(geminiRes.status).json({ 
-        error: data.error?.message || `Erro ${geminiRes.status} na API Gemini` 
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+      };
+      const request = https.request(options, (response) => {
+        let data = '';
+        response.on('data', chunk => data += chunk);
+        response.on('end', () => resolve({ status: response.statusCode, body: data }));
       });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    const data = JSON.parse(result.body);
+
+    if (result.status !== 200) {
+      res.status(result.status).json({ error: data.error?.message || 'Erro na API Gemini' });
+      return;
     }
 
-    const text = (data.candidates?.[0]?.content?.parts || [])
-      .map(p => p.text || '')
-      .join('')
-      .trim();
-
-    return res.status(200).json({ text });
+    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+    res.status(200).json({ text });
 
   } catch (err) {
-    return res.status(500).json({ error: 'Erro interno: ' + err.message });
+    res.status(500).json({ error: 'Erro: ' + err.message });
   }
 };
