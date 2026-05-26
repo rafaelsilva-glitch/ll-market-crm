@@ -23,11 +23,16 @@ module.exports = async function handler(req, res) {
     }
 
     const regiao = bairro ? `${bairro}, ${cidade}` : cidade;
-    const prompt = `Liste 20 condomínios residenciais reais em ${regiao} com mais de ${minUnidades} unidades. Somente de ${regiao}. Inclua: nome, endereco, bairro, cidade, telefone (ou null), email (ou null), administradora (ou null), unidades (número), status (Existente ou Lançamento recente), renda (Alta, Media ou Baixa). Retorne APENAS JSON array válido.`;
+    const prompt = `Liste 15 condomínios residenciais reais em ${regiao} com mais de ${minUnidades} unidades. Somente de ${regiao}. Inclua: nome, endereco, bairro, cidade, telefone (ou null), email (ou null), administradora (ou null), unidades (número inteiro), status (Existente ou Lançamento recente), renda (Alta, Media ou Baixa). Retorne APENAS JSON array válido, sem texto adicional.`;
 
     const postData = JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     });
 
     const result = await new Promise((resolve, reject) => {
@@ -35,7 +40,11 @@ module.exports = async function handler(req, res) {
         hostname: 'generativelanguage.googleapis.com',
         path: `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        },
+        timeout: 55000
       };
       const request = https.request(options, (response) => {
         let data = '';
@@ -43,6 +52,7 @@ module.exports = async function handler(req, res) {
         response.on('end', () => resolve({ status: response.statusCode, body: data }));
       });
       request.on('error', reject);
+      request.on('timeout', () => { request.destroy(); reject(new Error('Timeout na chamada ao Gemini')); });
       request.write(postData);
       request.end();
     });
