@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY não configurada.' });
 
-  const prompt = `Pesquise e liste condomínios residenciais reais em ${cidade}${bairro ? `, região de ${bairro}` : ''} com mais de ${minUnidades} unidades. Retorne APENAS um array JSON válido, sem markdown, sem texto antes ou depois:\n[\n  {\n    "nome": "Nome do condomínio",\n    "endereco": "Endereço completo",\n    "bairro": "Bairro",\n    "cidade": "${cidade}",\n    "telefone": "telefone ou null",\n    "email": "email ou null",\n    "administradora": "nome ou null",\n    "unidades": 200\n  }\n]\nListe ao menos 10 condomínios reais. Retorne SOMENTE o array JSON.`;
+  const prompt = `Liste 10 condomínios residenciais reais em ${cidade}${bairro ? `, ${bairro}` : ''} com mais de ${minUnidades} unidades. Responda SOMENTE com JSON array, sem explicações, sem markdown:\n[{"nome":"...","endereco":"...","bairro":"...","cidade":"${cidade}","telefone":null,"email":null,"administradora":null,"unidades":300}]`;
 
   try {
     const r = await fetch(
@@ -18,32 +18,24 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          tools: [{ google_search: {} }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
+          generationConfig: { 
+            temperature: 0.1, 
+            maxOutputTokens: 4096,
+            responseMimeType: 'application/json'
+          }
         })
       }
     );
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Erro Gemini' });
 
-    // Extrai todo o texto da resposta
     const rawText = (data.candidates?.[0]?.content?.parts || [])
       .map(p => p.text || '')
-      .join('');
-
-    // Remove markdown e extrai JSON
-    let text = rawText
-      .replace(/```json\n?/gi, '')
-      .replace(/```\n?/gi, '')
+      .join('')
       .trim();
 
-    // Se não começar com [, tenta encontrar o array
-    if (!text.startsWith('[')) {
-      const match = rawText.match(/\[[\s\S]*\]/);
-      if (match) text = match[0];
-    }
-
-    res.status(200).json({ text });
+    // Retorna o texto bruto — o frontend vai fazer o parse
+    res.status(200).json({ text: rawText });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
