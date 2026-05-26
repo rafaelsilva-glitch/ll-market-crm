@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY não configurada.' });
 
-  const prompt = `Pesquise e liste condomínios residenciais reais em ${cidade}${bairro ? `, região de ${bairro}` : ''} com mais de ${minUnidades} unidades. Retorne APENAS um array JSON válido:\n[\n  {\n    "nome": "Nome do condomínio",\n    "endereco": "Endereço completo",\n    "bairro": "Bairro",\n    "cidade": "${cidade}",\n    "telefone": "telefone ou null",\n    "email": "email ou null",\n    "administradora": "nome ou null",\n    "unidades": numero_inteiro\n  }\n]\nListe ao menos 10 condomínios reais. Somente o JSON.`;
+  const prompt = `Pesquise e liste condomínios residenciais reais em ${cidade}${bairro ? `, região de ${bairro}` : ''} com mais de ${minUnidades} unidades. Retorne APENAS um array JSON válido, sem markdown, sem texto antes ou depois:\n[\n  {\n    "nome": "Nome do condomínio",\n    "endereco": "Endereço completo",\n    "bairro": "Bairro",\n    "cidade": "${cidade}",\n    "telefone": "telefone ou null",\n    "email": "email ou null",\n    "administradora": "nome ou null",\n    "unidades": 200\n  }\n]\nListe ao menos 10 condomínios reais. Retorne SOMENTE o array JSON.`;
 
   try {
     const r = await fetch(
@@ -25,7 +25,24 @@ export default async function handler(req, res) {
     );
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data.error?.message || 'Erro Gemini' });
-    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+
+    // Extrai todo o texto da resposta
+    const rawText = (data.candidates?.[0]?.content?.parts || [])
+      .map(p => p.text || '')
+      .join('');
+
+    // Remove markdown e extrai JSON
+    let text = rawText
+      .replace(/```json\n?/gi, '')
+      .replace(/```\n?/gi, '')
+      .trim();
+
+    // Se não começar com [, tenta encontrar o array
+    if (!text.startsWith('[')) {
+      const match = rawText.match(/\[[\s\S]*\]/);
+      if (match) text = match[0];
+    }
+
     res.status(200).json({ text });
   } catch (e) {
     res.status(500).json({ error: e.message });
