@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L&L Market — CRM de Prospecção</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f3f4f6;color:#111}
+input,select,textarea{border:1px solid #d1d5db;border-radius:7px;padding:8px 10px;font-size:13px;width:100%;outline:none;background:#fff;color:#111;font-family:inherit}
+input:focus,select:focus,textarea:focus{border-color:#059669;box-shadow:0 0 0 3px rgba(5,150,105,0.1)}
+textarea{resize:vertical}
+button{font-family:inherit;cursor:pointer}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useMemo}=React;
+const STATUS={
+  novo:{label:'Novo',bg:'#EFF6FF',color:'#1D4ED8'},
+  contato:{label:'Contato feito',bg:'#F5F3FF',color:'#6D28D9'},
+  reuniao:{label:'Reunião agendada',bg:'#FFFBEB',color:'#B45309'},
+  proposta:{label:'Proposta enviada',bg:'#ECFDF5',color:'#065F46'},
+  fechado:{label:'Fechado ✓',bg:'#D1FAE5',color:'#064E3B'},
+  perdido:{label:'Perdido',bg:'#FEF2F2',color:'#991B1B'},
+};
+const PRIO={alta:{label:'Alta',color:'#DC2626'},media:{label:'Média',color:'#D97706'},baixa:{label:'Baixa',color:'#6B7280'}};
+
+function getLeads(){try{return JSON.parse(localStorage.getItem('ll_leads')||'[]')}catch{return[]}}
+function saveLeads(l){localStorage.setItem('ll_leads',JSON.stringify(l))}
+
+function Badge({status}){
+  const c=STATUS[status]||STATUS.novo;
+  return React.createElement('span',{style:{background:c.bg,color:c.color,fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,whiteSpace:'nowrap'}},c.label);
+}
+
+function Sidebar({tab,setTab,leads}){
+  const total=leads.length,fechados=leads.filter(l=>l.status==='fechado').length;
+  const pct=total>0?Math.round(fechados/total*100):0;
+  const items=[{id:'dashboard',icon:'⊞',label:'Dashboard'},{id:'prospectar',icon:'⊕',label:'Prospectar'},{id:'leads',icon:'☰',label:`Leads (${total})`}];
+  return(
+    <div style={{width:185,background:'#fff',borderRight:'1px solid #e5e7eb',display:'flex',flexDirection:'column',minHeight:'100vh',flexShrink:0}}>
+      <div style={{padding:'18px 16px 14px',borderBottom:'1px solid #e5e7eb'}}>
+        <div style={{fontWeight:700,fontSize:15,color:'#059669'}}>L&L Market</div>
+        <div style={{fontSize:10,color:'#9ca3af',marginTop:2}}>CRM de Prospecção</div>
+      </div>
+      {items.map(item=>(
+        <button key={item.id} onClick={()=>setTab(item.id)} style={{display:'flex',alignItems:'center',gap:9,padding:'10px 16px',border:'none',textAlign:'left',width:'100%',fontSize:13,background:tab===item.id?'#ecfdf5':'transparent',color:tab===item.id?'#065f46':'#6b7280',borderLeft:tab===item.id?'3px solid #059669':'3px solid transparent',fontWeight:tab===item.id?600:400}}>
+          <span style={{fontSize:14}}>{item.icon}</span>{item.label}
+        </button>
+      ))}
+      <div style={{marginTop:'auto',padding:'16px',borderTop:'1px solid #e5e7eb'}}>
+        <div style={{fontSize:10,color:'#9ca3af',marginBottom:3}}>Taxa de conversão</div>
+        <div style={{fontSize:26,fontWeight:700,color:'#059669'}}>{pct}%</div>
+        <div style={{fontSize:10,color:'#9ca3af'}}>{fechados} de {total} fechados</div>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({leads,setTab}){
+  const total=leads.length;
+  const kpis=[
+    {label:'Total de leads',value:total,color:'#059669'},
+    {label:'Alta prioridade',value:leads.filter(l=>l.prioridade==='alta').length,color:'#DC2626'},
+    {label:'Em negociação',value:leads.filter(l=>['reuniao','proposta'].includes(l.status)).length,color:'#D97706'},
+    {label:'Fechados',value:leads.filter(l=>l.status==='fechado').length,color:'#059669'},
+  ];
+  const recentes=[...leads].sort((a,b)=>new Date(b.atualizadoEm)-new Date(a.atualizadoEm)).slice(0,6);
+  return(
+    <div>
+      <h1 style={{fontSize:20,fontWeight:700,marginBottom:'1.5rem',color:'#111'}}>Dashboard</h1>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:'1.5rem'}}>
+        {kpis.map(k=>(
+          <div key={k.label} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'16px 14px',textAlign:'center'}}>
+            <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>{k.label}</div>
+            <div style={{fontSize:30,fontWeight:700,color:k.color}}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:14,color:'#111'}}>Funil de prospecção</div>
+          {Object.entries(STATUS).map(([k,v])=>{
+            const count=leads.filter(l=>l.status===k).length;
+            return(<div key={k} style={{marginBottom:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                <span style={{fontSize:12,color:'#6b7280'}}>{v.label}</span>
+                <span style={{fontSize:12,fontWeight:600}}>{count}</span>
+              </div>
+              <div style={{height:6,background:'#f3f4f6',borderRadius:999}}>
+                <div style={{height:'100%',borderRadius:999,width:total>0?`${count/total*100}%`:'0%',background:v.color,transition:'width 0.4s'}}/>
+              </div>
+            </div>);
+          })}
+        </div>
+        <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:14,color:'#111'}}>Leads recentes</div>
+          {recentes.length===0?(
+            <div style={{textAlign:'center',padding:'2rem 0',color:'#9ca3af',fontSize:13}}>
+              Nenhum lead ainda.<br/>
+              <button onClick={()=>setTab('prospectar')} style={{marginTop:8,fontSize:12,color:'#059669',background:'none',border:'none',textDecoration:'underline'}}>Iniciar prospecção →</button>
+            </div>
+          ):recentes.map(lead=>(
+            <div key={lead.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid #f3f4f6'}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:'#111'}}>{lead.nome}</div>
+                <div style={{fontSize:10,color:'#9ca3af'}}>{lead.cidade}{lead.bairro?` / ${lead.bairro}`:''}</div>
+              </div>
+              <Badge status={lead.status}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Prospectar({onAddLeads,leads}){
+  const [form,setForm]=useState({cidade:'São Paulo',bairro:'',minUnidades:200});
+  const [loading,setLoading]=useState(false);
+  const [results,setResults]=useState([]);
+  const [error,setError]=useState('');
+  const [sel,setSel]=useState([]);
+  const [done,setDone]=useState(false);
+
+  const buscar=async()=>{
+    setLoading(true);setError('');setResults([]);setDone(false);
+    try{
+      const res=await fetch('/api/search',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(form)
+      });
+      const data=await res.json();
+      if(!res.ok||data.error) throw new Error(data.error||'Erro na busca');
+      const text=data.text||'';
+      let parsed=[];
+      const clean=text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+      if(clean.startsWith('[')){parsed=JSON.parse(clean);}
+      else{const m=text.match(/\[[\s\S]*?\]/);if(m)parsed=JSON.parse(m[0]);else throw new Error('Resposta inesperada. Tente novamente.');}
+      const existing=leads.map(l=>l.nome.toLowerCase());
+      const fresh=parsed.filter(r=>r.nome&&!existing.includes(r.nome.toLowerCase()));
+      setResults(fresh);setSel(fresh.map((_,i)=>i));
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  };
+
+  const adicionar=()=>{
+    const toAdd=sel.map(i=>results[i]).filter(Boolean).map(r=>({
+      id:Date.now()+Math.random(),nome:r.nome||'Sem nome',endereco:r.endereco||'',bairro:r.bairro||'',
+      cidade:r.cidade||form.cidade,telefone:r.telefone||'',email:r.email||'',
+      administradora:r.administradora||'',unidades:r.unidades||null,status:'novo',
+      prioridade:r.unidades>=300?'alta':r.unidades>=150?'media':'baixa',
+      fonte:'Gemini Search',historico:[],observacoes:'',
+      criadoEm:new Date().toISOString(),atualizadoEm:new Date().toISOString(),
+    }));
+    onAddLeads(toAdd);setDone(true);setSel([]);
+  };
+
+  const toggle=i=>setSel(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i]);
+
+  return(
+    <div>
+      <h1 style={{fontSize:20,fontWeight:700,marginBottom:'1.5rem',color:'#111'}}>Prospectar com Gemini IA</h1>
+      <div style={{background:'#d1fae5',color:'#065f46',border:'1px solid #6ee7b7',borderRadius:8,padding:'10px 16px',fontSize:12,marginBottom:'1rem'}}>
+        ✓ Busca ativa — Gemini pesquisa condomínios em tempo real via Google Search.
+      </div>
+      <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'1.25rem',marginBottom:'1.25rem'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 150px',gap:12,marginBottom:14}}>
+          <div><label style={{fontSize:11,color:'#6b7280',display:'block',marginBottom:3,fontWeight:500}}>Cidade *</label><input value={form.cidade} onChange={e=>setForm(f=>({...f,cidade:e.target.value}))} placeholder="Ex: São Paulo"/></div>
+          <div><label style={{fontSize:11,color:'#6b7280',display:'block',marginBottom:3,fontWeight:500}}>Bairro / Região</label><input value={form.bairro} onChange={e=>setForm(f=>({...f,bairro:e.target.value}))} placeholder="Ex: Lapa, Guarulhos..."/></div>
+          <div><label style={{fontSize:11,color:'#6b7280',display:'block',marginBottom:3,fontWeight:500}}>Mín. unidades</label><input type="number" value={form.minUnidades} onChange={e=>setForm(f=>({...f,minUnidades:parseInt(e.target.value)||0}))} min={50}/></div>
+        </div>
+        <button onClick={buscar} disabled={loading} style={{background:loading?'#6ee7b7':'#059669',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',fontSize:13,fontWeight:600,cursor:loading?'not-allowed':'pointer'}}>
+          {loading?'⟳ Buscando no Google...':'⊕ Buscar com Gemini'}
+        </button>
+      </div>
+      {error&&<div style={{background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca',borderRadius:8,padding:'12px 16px',fontSize:12,marginBottom:'1rem'}}>{error}</div>}
+      {done&&<div style={{background:'#d1fae5',color:'#064e3b',border:'1px solid #6ee7b7',borderRadius:8,padding:'12px 16px',fontSize:12,marginBottom:'1rem'}}>✓ Leads adicionados ao CRM!</div>}
+      {results.length>0&&!done&&(
+        <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'1.25rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:600,color:'#111'}}>{results.length} condomínios encontrados</div>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <button onClick={()=>setSel(results.map((_,i)=>i))} style={{fontSize:12,color:'#059669',background:'none',border:'none'}}>Todos</button>
+              <button onClick={()=>setSel([])} style={{fontSize:12,color:'#9ca3af',background:'none',border:'none'}}>Limpar</button>
+              <button onClick={adicionar} disabled={sel.length===0} style={{background:sel.length===0?'#d1fae5':'#059669',color:'#fff',border:'none',borderRadius:7,padding:'7px 16px',fontSize:12,fontWeight:600,cursor:sel.length===0?'not-allowed':'pointer'}}>
+                Adicionar {sel.length} ao CRM
+              </button>
+            </div>
+          </div>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead><tr style={{background:'#f9fafb'}}>
+                {['','Nome','Bairro','Unidades','Telefone','Administradora'].map(h=>(
+                  <th key={h} style={{padding:'8px',textAlign:'left',fontWeight:600,color:'#6b7280',fontSize:11,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{results.map((r,i)=>(
+                <tr key={i} onClick={()=>toggle(i)} style={{cursor:'pointer',background:sel.includes(i)?'#f0fdf4':'transparent',borderBottom:'1px solid #f3f4f6'}}>
+                  <td style={{padding:'8px'}}><input type="checkbox" checked={sel.includes(i)} onChange={()=>toggle(i)} onClick={e=>e.stopPropagation()}/></td>
+                  <td style={{padding:'8px',fontWeight:600,color:'#111'}}>{r.nome}</td>
+                  <td style={{padding:'8px',color:'#6b7280'}}>{r.bairro||'-'}</td>
+                  <td style={{padding:'8px'}}>{r.unidades?`~${r.unidades}`:'-'}</td>
+                  <td style={{padding:'8px',color:r.telefone?'#111':'#d1d5db'}}>{r.telefone||'-'}</td>
+                  <td style={{padding:'8px',color:'#6b7280'}}>{r.administradora||'-'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadDetail({lead,onUpdate,onClose}){
+  const [form,setForm]=useState({...lead});
+  const [trat,setTrat]=useState('');
+  const [saved,setSaved]=useState(false);
+  const salvar=()=>{const u={...form,atualizadoEm:new Date().toISOString()};onUpdate(u);setSaved(true);setTimeout(()=>setSaved(false),1800);};
+  const addTrat=()=>{
+    if(!trat.trim())return;
+    const u={...form,historico:[...(form.historico||[]),{data:new Date().toISOString(),texto:trat.trim(),tipo:'tratativa'}],atualizadoEm:new Date().toISOString()};
+    setForm(u);onUpdate(u);setTrat('');
+  };
+  const mudaStatus=st=>{
+    const u={...form,status:st,historico:[...(form.historico||[]),{data:new Date().toISOString(),texto:`Status: ${STATUS[st]?.label}`,tipo:'status'}],atualizadoEm:new Date().toISOString()};
+    setForm(u);onUpdate(u);
+  };
+  return(
+    <div style={{width:320,borderLeft:'1px solid #e5e7eb',overflowY:'auto',padding:'1.25rem',background:'#fff',flexShrink:0}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:'#111'}}>{form.nome}</div>
+          <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>{form.cidade}{form.bairro?` / ${form.bairro}`:''}</div>
+        </div>
+        <button onClick={onClose} style={{background:'none',border:'none',fontSize:18,color:'#9ca3af'}}>✕</button>
+      </div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:14}}>
+        {Object.entries(STATUS).map(([k,v])=>(
+          <button key={k} onClick={()=>mudaStatus(k)} style={{fontSize:10,padding:'3px 8px',borderRadius:999,background:form.status===k?v.bg:'transparent',color:form.status===k?v.color:'#9ca3af',border:form.status===k?`1.5px solid ${v.color}`:'1px solid #e5e7eb',fontWeight:form.status===k?600:400}}>{v.label}</button>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+        {[{l:'Telefone',k:'telefone'},{l:'Email',k:'email'},{l:'Administradora',k:'administradora'},{l:'Unidades',k:'unidades',t:'number'}].map(f=>(
+          <div key={f.k}>
+            <label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>{f.l}</label>
+            <input type={f.t||'text'} value={form[f.k]||''} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))} style={{fontSize:12}}/>
+          </div>
+        ))}
+      </div>
+      <div style={{marginBottom:10}}><label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>Endereço</label><input value={form.endereco||''} onChange={e=>setForm(p=>({...p,endereco:e.target.value}))} style={{fontSize:12}}/></div>
+      <div style={{marginBottom:10}}><label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>Prioridade</label>
+        <select value={form.prioridade||'media'} onChange={e=>setForm(p=>({...p,prioridade:e.target.value}))} style={{fontSize:12}}>
+          {Object.entries(PRIO).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+        </select>
+      </div>
+      <div style={{marginBottom:14}}><label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>Observações</label><textarea value={form.observacoes||''} onChange={e=>setForm(p=>({...p,observacoes:e.target.value}))} placeholder="Notas..." style={{fontSize:12,minHeight:56}}/></div>
+      <button onClick={salvar} style={{width:'100%',background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontSize:13,fontWeight:600,marginBottom:16}}>{saved?'✓ Salvo!':'Salvar alterações'}</button>
+      <div style={{borderTop:'1px solid #e5e7eb',paddingTop:14}}>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:10,color:'#111'}}>Histórico de tratativas</div>
+        <div style={{display:'flex',gap:6,marginBottom:12}}>
+          <input value={trat} onChange={e=>setTrat(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTrat()} placeholder="Registrar ação ou contato..." style={{flex:1,fontSize:12}}/>
+          <button onClick={addTrat} style={{background:'#059669',color:'#fff',border:'none',borderRadius:7,padding:'0 14px',fontSize:16,flexShrink:0}}>+</button>
+        </div>
+        {(form.historico||[]).length===0?<div style={{fontSize:11,color:'#d1d5db',textAlign:'center',padding:'10px 0'}}>Nenhuma tratativa ainda.</div>
+        :[...(form.historico||[])].reverse().map((h,i)=>(
+          <div key={i} style={{padding:'8px 10px',background:h.tipo==='status'?'#f9fafb':'#fff',border:'1px solid #e5e7eb',borderRadius:7,borderLeft:h.tipo==='status'?'3px solid #059669':'3px solid #3b82f6',marginBottom:7}}>
+            <div style={{fontSize:10,color:'#9ca3af',marginBottom:2}}>{new Date(h.data).toLocaleString('pt-BR')}</div>
+            <div style={{fontSize:12,color:'#111'}}>{h.texto}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Leads({leads,onUpdate}){
+  const [search,setSearch]=useState('');
+  const [fSt,setFSt]=useState('todos');
+  const [fPr,setFPr]=useState('todas');
+  const [sel,setSel]=useState(null);
+  const filtered=useMemo(()=>leads.filter(l=>{
+    const ms=!search||[l.nome,l.cidade,l.bairro,l.administradora].some(x=>(x||'').toLowerCase().includes(search.toLowerCase()));
+    return ms&&(fSt==='todos'||l.status===fSt)&&(fPr==='todas'||l.prioridade===fPr);
+  }).sort((a,b)=>new Date(b.atualizadoEm)-new Date(a.atualizadoEm)),[leads,search,fSt,fPr]);
+  const exportar=()=>{
+    const h=['Nome','Endereço','Bairro','Cidade','Telefone','Email','Administradora','Unidades','Status','Prioridade','Fonte','Criado em'];
+    const rows=leads.map(l=>[l.nome,l.endereco,l.bairro,l.cidade,l.telefone,l.email,l.administradora,l.unidades||'',STATUS[l.status]?.label||l.status,PRIO[l.prioridade]?.label||l.prioridade,l.fonte,new Date(l.criadoEm).toLocaleDateString('pt-BR')]);
+    const csv=[h,...rows].map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));a.download='leads_ll_market.csv';a.click();
+  };
+  return(
+    <div style={{display:'flex',gap:0,height:'100%'}}>
+      <div style={{flex:1,overflow:'hidden'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+          <h1 style={{fontSize:20,fontWeight:700,color:'#111'}}>Leads ({filtered.length})</h1>
+          <button onClick={exportar} style={{background:'transparent',color:'#059669',border:'1px solid #059669',borderRadius:7,padding:'7px 14px',fontSize:12,fontWeight:500}}>↓ Exportar CSV</button>
+        </div>
+        <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+          <input placeholder="Buscar por nome, cidade, bairro..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:160,fontSize:12}}/>
+          <select value={fSt} onChange={e=>setFSt(e.target.value)} style={{width:'auto',fontSize:12}}>
+            <option value="todos">Todos os status</option>
+            {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <select value={fPr} onChange={e=>setFPr(e.target.value)} style={{width:'auto',fontSize:12}}>
+            <option value="todas">Todas as prioridades</option>
+            {Object.entries(PRIO).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        {leads.length===0?<div style={{textAlign:'center',padding:'4rem',color:'#9ca3af',fontSize:14}}>Nenhum lead ainda. Use "Prospectar" para buscar condomínios.</div>
+        :filtered.length===0?<div style={{textAlign:'center',padding:'3rem',color:'#9ca3af',fontSize:14}}>Nenhum resultado para os filtros.</div>
+        :(
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,background:'#fff',borderRadius:10,overflow:'hidden',border:'1px solid #e5e7eb'}}>
+              <thead><tr style={{background:'#f9fafb'}}>
+                {['Nome','Cidade / Bairro','Unid.','Telefone','Status','Prioridade',''].map(h=>(
+                  <th key={h} style={{padding:'9px 10px',textAlign:'left',fontWeight:600,color:'#6b7280',fontSize:11,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{filtered.map(lead=>(
+                <tr key={lead.id} style={{borderBottom:'1px solid #f3f4f6',background:sel?.id===lead.id?'#f0fdf4':'transparent'}}>
+                  <td style={{padding:'9px 10px',fontWeight:600,color:'#111',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lead.nome}</td>
+                  <td style={{padding:'9px 10px',color:'#6b7280'}}>{lead.cidade}{lead.bairro?` / ${lead.bairro}`:''}</td>
+                  <td style={{padding:'9px 10px'}}>{lead.unidades?`~${lead.unidades}`:'-'}</td>
+                  <td style={{padding:'9px 10px',color:lead.telefone?'#111':'#d1d5db'}}>{lead.telefone||'-'}</td>
+                  <td style={{padding:'9px 10px'}}><Badge status={lead.status}/></td>
+                  <td style={{padding:'9px 10px'}}><span style={{color:PRIO[lead.prioridade]?.color||'#888',fontSize:12,fontWeight:600}}>● {PRIO[lead.prioridade]?.label||lead.prioridade}</span></td>
+                  <td style={{padding:'9px 10px'}}><button onClick={()=>setSel(sel?.id===lead.id?null:lead)} style={{fontSize:11,color:'#059669',background:'none',border:'none',textDecoration:'underline'}}>{sel?.id===lead.id?'Fechar':'Ver / Editar'}</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {sel&&<LeadDetail lead={sel} onUpdate={u=>{onUpdate(u);setSel(u);}} onClose={()=>setSel(null)}/>}
+    </div>
+  );
+}
+
+function App(){
+  const [tab,setTab]=useState('dashboard');
+  const [leads,setLeads]=useState(getLeads);
+  const addLeads=useCallback(nl=>{setLeads(prev=>{const u=[...prev,...nl];saveLeads(u);return u;});},[]);
+  const updateLead=useCallback(ul=>{setLeads(prev=>{const u=prev.map(l=>l.id===ul.id?ul:l);saveLeads(u);return u;});},[]);
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      <Sidebar tab={tab} setTab={setTab} leads={leads}/>
+      <div style={{flex:1,overflowY:'auto',padding:'1.5rem',background:'#f3f4f6'}}>
+        {tab==='dashboard'&&<Dashboard leads={leads} setTab={setTab}/>}
+        {tab==='prospectar'&&<Prospectar onAddLeads={addLeads} leads={leads}/>}
+        {tab==='leads'&&<Leads leads={leads} onUpdate={updateLead}/>}
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(React.createElement(App),document.getElementById('root'));
+</script>
+</body>
+</html>
