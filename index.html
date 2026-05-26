@@ -142,8 +142,26 @@ function Prospectar({onAddLeads,leads}){
         if(text.startsWith('[')) parsed=JSON.parse(text);
         else{const m=text.match(/\[[\s\S]*\]/);if(m)parsed=JSON.parse(m[0]);else throw new Error('JSON não encontrado');}
       }catch(e){throw new Error('Erro ao processar: '+e.message);}
-      const existing=leads.map(l=>l.nome.toLowerCase());
-      const fresh=parsed.filter(r=>r.nome&&!existing.includes(r.nome.toLowerCase()));
+      // Deduplicação robusta: por nome similar ou endereço igual
+      const normalizar=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
+      const existingNomes=leads.map(l=>normalizar(l.nome));
+      const existingEnd=leads.map(l=>normalizar(l.endereco)).filter(Boolean);
+      const similar=(a,b)=>{
+        const na=normalizar(a),nb=normalizar(b);
+        if(na===nb)return true;
+        // Verifica se 80% das palavras coincidem
+        const wa=na.split(' ').filter(x=>x.length>3);
+        const wb=nb.split(' ').filter(x=>x.length>3);
+        if(wa.length===0||wb.length===0)return false;
+        const matches=wa.filter(w=>wb.includes(w)).length;
+        return matches/Math.max(wa.length,wb.length)>=0.8;
+      };
+      const fresh=parsed.filter(r=>{
+        if(!r.nome)return false;
+        const jaExistePorNome=existingNomes.some(n=>similar(r.nome,n));
+        const jaExistePorEnd=r.endereco&&existingEnd.some(e=>similar(r.endereco,e));
+        return !jaExistePorNome&&!jaExistePorEnd;
+      });
       setResults(fresh);setSel(fresh.map((_,i)=>i));
     }catch(e){setError(e.message);}
     finally{setLoading(false);}
