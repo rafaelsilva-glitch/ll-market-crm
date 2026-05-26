@@ -8,16 +8,17 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY não configurada.' });
 
-  const prompt = `Liste condomínios residenciais reais em ${cidade}${bairro ? `, região de ${bairro}` : ''} com mais de ${minUnidades} unidades. Retorne APENAS um array JSON válido:\n[\n  {\n    "nome": "Nome do condomínio",\n    "endereco": "Endereço completo",\n    "bairro": "Bairro",\n    "cidade": "${cidade}",\n    "telefone": "telefone ou null",\n    "email": "email ou null",\n    "administradora": "nome ou null",\n    "unidades": numero_inteiro\n  }\n]\nListe ao menos 10 condomínios reais. Somente o JSON.`;
+  const prompt = `Pesquise e liste condomínios residenciais reais em ${cidade}${bairro ? `, região de ${bairro}` : ''} com mais de ${minUnidades} unidades. Retorne APENAS um array JSON válido:\n[\n  {\n    "nome": "Nome do condomínio",\n    "endereco": "Endereço completo",\n    "bairro": "Bairro",\n    "cidade": "${cidade}",\n    "telefone": "telefone ou null",\n    "email": "email ou null",\n    "administradora": "nome ou null",\n    "unidades": numero_inteiro\n  }\n]\nListe ao menos 10 condomínios reais. Somente o JSON.`;
 
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          tools: [{ google_search: {} }],
           generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
         })
       }
