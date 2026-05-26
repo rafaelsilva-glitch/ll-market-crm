@@ -23,14 +23,33 @@ module.exports = async function handler(req, res) {
     }
 
     const regiao = bairro ? `${bairro}, ${cidade}` : cidade;
-    const prompt = `Liste 15 condomínios residenciais reais em ${regiao} com mais de ${minUnidades} unidades. Somente de ${regiao}. Inclua: nome, endereco, bairro, cidade, telefone (ou null), email (ou null), administradora (ou null), unidades (número inteiro), status (Existente ou Lançamento recente), renda (Alta, Media ou Baixa). Retorne APENAS JSON array válido, sem texto adicional.`;
+
+    const prompt = `Pesquise no Google e liste condomínios residenciais REAIS em ${regiao} com mais de ${minUnidades} unidades. Busque nomes reais, endereços reais, telefones reais de portaria ou administradora.
+
+Retorne SOMENTE um array JSON (sem markdown, sem texto antes ou depois):
+[
+  {
+    "nome": "Nome real do condomínio",
+    "endereco": "Endereço completo real",
+    "bairro": "Bairro real em ${regiao}",
+    "cidade": "${cidade}",
+    "telefone": "telefone real ou null",
+    "email": "email real ou null",
+    "administradora": "nome real da administradora ou null",
+    "unidades": numero_inteiro,
+    "status": "Existente ou Lançamento recente",
+    "renda": "Alta, Media ou Baixa"
+  }
+]
+
+Liste 15 condomínios reais. Apenas de ${regiao}. SOMENTE o JSON.`;
 
     const postData = JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
+        maxOutputTokens: 8192,
         thinkingConfig: { thinkingBudget: 0 }
       }
     });
@@ -52,7 +71,7 @@ module.exports = async function handler(req, res) {
         response.on('end', () => resolve({ status: response.statusCode, body: data }));
       });
       request.on('error', reject);
-      request.on('timeout', () => { request.destroy(); reject(new Error('Timeout na chamada ao Gemini')); });
+      request.on('timeout', () => { request.destroy(); reject(new Error('Timeout — tente novamente')); });
       request.write(postData);
       request.end();
     });
@@ -64,7 +83,19 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+    // Extrai texto de todas as partes
+    const rawText = (data.candidates?.[0]?.content?.parts || [])
+      .map(p => p.text || '')
+      .join('')
+      .trim();
+
+    // Limpa markdown e extrai JSON
+    let text = rawText.replace(/```json\n?/gi, '').replace(/```\n?/gi, '').trim();
+    if (!text.startsWith('[')) {
+      const match = rawText.match(/\[[\s\S]*\]/);
+      if (match) text = match[0];
+    }
+
     res.status(200).json({ text });
 
   } catch (err) {
