@@ -20,7 +20,8 @@ button{font-family:inherit;cursor:pointer}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useCallback,useMemo}=React;
+const {useState,useCallback,useMemo}=React;
+
 const STATUS={
   novo:{label:'Novo',bg:'#EFF6FF',color:'#1D4ED8'},
   contato:{label:'Contato feito',bg:'#F5F3FF',color:'#6D28D9'},
@@ -30,19 +31,13 @@ const STATUS={
   perdido:{label:'Perdido',bg:'#FEF2F2',color:'#991B1B'},
 };
 const PRIO={alta:{label:'Alta',color:'#DC2626'},media:{label:'Média',color:'#D97706'},baixa:{label:'Baixa',color:'#6B7280'}};
-const RENDA={Alta:{label:'Alto padrão',bg:'#FEF3C7',color:'#92400E'},Media:{label:'Médio padrão',bg:'#DBEAFE',color:'#1E40AF'},Baixa:{label:'Popular',bg:'#D1FAE5',color:'#065F46'}};
+const RENDA={Alta:{label:'Alto padrão',bg:'#FEF3C7',color:'#92400E'},Media:{label:'Médio padrão',bg:'#DBEAFE',color:'#1E40AF'},Baixa:{label:'Popular/HIS',bg:'#D1FAE5',color:'#065F46'}};
 
 function getLeads(){try{return JSON.parse(localStorage.getItem('ll_leads')||'[]')}catch{return[]}}
 function saveLeads(l){localStorage.setItem('ll_leads',JSON.stringify(l))}
 
-function Badge({status}){
-  const c=STATUS[status]||STATUS.novo;
-  return <span style={{background:c.bg,color:c.color,fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,whiteSpace:'nowrap'}}>{c.label}</span>;
-}
-function RendaBadge({renda}){
-  const r=RENDA[renda]||RENDA.Media;
-  return <span style={{background:r.bg,color:r.color,fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:999}}>{r.label}</span>;
-}
+function Badge({status}){const c=STATUS[status]||STATUS.novo;return <span style={{background:c.bg,color:c.color,fontSize:11,fontWeight:600,padding:'3px 9px',borderRadius:999,whiteSpace:'nowrap'}}>{c.label}</span>;}
+function RendaBadge({renda}){const r=RENDA[renda]||RENDA.Media;return <span style={{background:r.bg,color:r.color,fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:999,whiteSpace:'nowrap'}}>{r.label}</span>;}
 
 function Sidebar({tab,setTab,leads}){
   const total=leads.length,fechados=leads.filter(l=>l.status==='fechado').length;
@@ -138,15 +133,15 @@ function Prospectar({onAddLeads,leads}){
     setLoading(true);setError('');setResults([]);setDone(false);
     try{
       const res=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
-      const data=await res.json();
+      let data;
+      try{data=await res.json();}catch(e){throw new Error('Erro de comunicação com o servidor');}
       if(!res.ok||data.error) throw new Error(data.error||'Erro na busca');
-      let text=data.text||'';
+      let text=(data.text||'').replace(/```json\n?/gi,'').replace(/```\n?/gi,'').trim();
       let parsed=[];
       try{
-        text=text.replace(/```json\n?/gi,'').replace(/```\n?/gi,'').trim();
         if(text.startsWith('[')) parsed=JSON.parse(text);
-        else{const m=text.match(/\[[\s\S]*\]/);if(m)parsed=JSON.parse(m[0]);else throw new Error('Formato inesperado');}
-      }catch(e){throw new Error('Erro ao processar resposta: '+e.message);}
+        else{const m=text.match(/\[[\s\S]*\]/);if(m)parsed=JSON.parse(m[0]);else throw new Error('JSON não encontrado');}
+      }catch(e){throw new Error('Erro ao processar: '+e.message);}
       const existing=leads.map(l=>l.nome.toLowerCase());
       const fresh=parsed.filter(r=>r.nome&&!existing.includes(r.nome.toLowerCase()));
       setResults(fresh);setSel(fresh.map((_,i)=>i));
@@ -156,13 +151,13 @@ function Prospectar({onAddLeads,leads}){
 
   const adicionar=()=>{
     const toAdd=sel.map(i=>results[i]).filter(Boolean).map(r=>({
-      id:Date.now()+Math.random(),nome:r.nome||'Sem nome',endereco:r.endereco||'',bairro:r.bairro||'',
+      id:Date.now()+Math.random(),
+      nome:r.nome||'Sem nome',endereco:r.endereco||'',bairro:r.bairro||'',
       cidade:r.cidade||form.cidade,telefone:r.telefone||'',email:r.email||'',
       administradora:r.administradora||'',unidades:r.unidades||null,
-      contato:r.contato||'Visita presencial',
-      status_imovel:r.status||'Existente',renda:r.renda||'Media',
+      renda:r.renda||'Media',status_imovel:r.status||'Existente',
       status:'novo',prioridade:r.unidades>=300?'alta':r.unidades>=150?'media':'baixa',
-      fonte:'Gemini IA',historico:[],observacoes:'',
+      fonte:'Gemini Search',historico:[],observacoes:'',
       criadoEm:new Date().toISOString(),atualizadoEm:new Date().toISOString(),
     }));
     onAddLeads(toAdd);setDone(true);setSel([]);
@@ -174,7 +169,7 @@ function Prospectar({onAddLeads,leads}){
     <div>
       <h1 style={{fontSize:20,fontWeight:700,marginBottom:'1.5rem',color:'#111'}}>Prospectar com Gemini IA</h1>
       <div style={{background:'#d1fae5',color:'#065f46',border:'1px solid #6ee7b7',borderRadius:8,padding:'10px 16px',fontSize:12,marginBottom:'1rem'}}>
-        ✓ Busca ativa — retorna até 20 condomínios com perfil de renda, status e indicação de contato.
+        ✓ Busca ativa com Google Search — retorna nomes reais, telefones, administradoras, perfil de renda e status do imóvel.
       </div>
       <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,padding:'1.25rem',marginBottom:'1.25rem'}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 150px',gap:12,marginBottom:14}}>
@@ -183,7 +178,7 @@ function Prospectar({onAddLeads,leads}){
           <div><label style={{fontSize:11,color:'#6b7280',display:'block',marginBottom:3,fontWeight:500}}>Mín. unidades</label><input type="number" value={form.minUnidades} onChange={e=>setForm(f=>({...f,minUnidades:parseInt(e.target.value)||0}))} min={50}/></div>
         </div>
         <button onClick={buscar} disabled={loading} style={{background:loading?'#6ee7b7':'#059669',color:'#fff',border:'none',borderRadius:8,padding:'10px 24px',fontSize:13,fontWeight:600,cursor:loading?'not-allowed':'pointer'}}>
-          {loading?'⟳ Buscando condomínios...':'⊕ Buscar com Gemini'}
+          {loading?'⟳ Buscando no Google...':'⊕ Buscar com Gemini'}
         </button>
       </div>
       {error&&<div style={{background:'#fef2f2',color:'#991b1b',border:'1px solid #fecaca',borderRadius:8,padding:'12px 16px',fontSize:12,marginBottom:'1rem'}}>{error}</div>}
@@ -195,7 +190,7 @@ function Prospectar({onAddLeads,leads}){
             <div style={{display:'flex',gap:10,alignItems:'center'}}>
               <button onClick={()=>setSel(results.map((_,i)=>i))} style={{fontSize:12,color:'#059669',background:'none',border:'none'}}>Todos</button>
               <button onClick={()=>setSel([])} style={{fontSize:12,color:'#9ca3af',background:'none',border:'none'}}>Limpar</button>
-              <button onClick={adicionar} disabled={sel.length===0} style={{background:sel.length===0?'#d1fae5':'#059669',color:'#fff',border:'none',borderRadius:7,padding:'7px 16px',fontSize:12,fontWeight:600,cursor:sel.length===0?'not-allowed':'pointer'}}>
+              <button onClick={adicionar} disabled={sel.length===0} style={{background:sel.length===0?'#d1fae5':'#059669',color:'#fff',border:'none',borderRadius:7,padding:'7px 16px',fontSize:12,fontWeight:600}}>
                 Adicionar {sel.length} ao CRM
               </button>
             </div>
@@ -203,7 +198,7 @@ function Prospectar({onAddLeads,leads}){
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead><tr style={{background:'#f9fafb'}}>
-                {['','Nome','Bairro','Unid.','Contato','Status','Renda'].map(h=>(
+                {['','Nome','Bairro','Unid.','Telefone','Administradora','Renda','Status'].map(h=>(
                   <th key={h} style={{padding:'8px',textAlign:'left',fontWeight:600,color:'#6b7280',fontSize:11,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
                 ))}
               </tr></thead>
@@ -213,17 +208,16 @@ function Prospectar({onAddLeads,leads}){
                   <td style={{padding:'8px',fontWeight:600,color:'#111'}}>{r.nome}</td>
                   <td style={{padding:'8px',color:'#6b7280'}}>{r.bairro||'-'}</td>
                   <td style={{padding:'8px'}}>{r.unidades?`~${r.unidades}`:'-'}</td>
-                  <td style={{padding:'8px'}}>
-                    {r.telefone?<span style={{color:'#059669',fontWeight:500}}>📞 {r.telefone}</span>
-                    :r.email?<span style={{color:'#6b7280'}}>✉ {r.email}</span>
-                    :<span style={{color:'#D97706',fontSize:11,fontWeight:500}}>🚶 Visita presencial</span>}
+                  <td style={{padding:'8px',color:r.telefone?'#059669':'#d1d5db',fontWeight:r.telefone?500:400}}>
+                    {r.telefone?`📞 ${r.telefone}`:r.email?`✉ ${r.email}`:'🚶 Visita presencial'}
                   </td>
+                  <td style={{padding:'8px',color:'#6b7280'}}>{r.administradora||'-'}</td>
+                  <td style={{padding:'8px'}}><RendaBadge renda={r.renda||'Media'}/></td>
                   <td style={{padding:'8px'}}>
                     <span style={{fontSize:10,fontWeight:600,color:r.status==='Lançamento recente'?'#059669':'#6b7280'}}>
                       {r.status==='Lançamento recente'?'🆕 Lançamento':'🏢 Existente'}
                     </span>
                   </td>
-                  <td style={{padding:'8px'}}><RendaBadge renda={r.renda}/></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -255,20 +249,32 @@ function LeadDetail({lead,onUpdate,onClose,onDelete}){
           <div style={{fontSize:14,fontWeight:700,color:'#111'}}>{form.nome}</div>
           <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>{form.cidade}{form.bairro?` / ${form.bairro}`:''}</div>
           <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
-            {form.renda&&<RendaBadge renda={form.renda}/>}
-            {form.status_imovel&&<span style={{fontSize:10,fontWeight:600,color:form.status_imovel==='Lançamento recente'?'#059669':'#6b7280'}}>{form.status_imovel==='Lançamento recente'?'🆕 Lançamento':'🏢 Existente'}</span>}
+            <RendaBadge renda={form.renda||'Media'}/>
+            <span style={{fontSize:10,fontWeight:600,color:form.status_imovel==='Lançamento recente'?'#059669':'#6b7280'}}>
+              {form.status_imovel==='Lançamento recente'?'🆕 Lançamento':'🏢 Existente'}
+            </span>
           </div>
         </div>
         <button onClick={onClose} style={{background:'none',border:'none',fontSize:18,color:'#9ca3af'}}>✕</button>
       </div>
+
       <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:14}}>
         {Object.entries(STATUS).map(([k,v])=>(
           <button key={k} onClick={()=>mudaStatus(k)} style={{fontSize:10,padding:'3px 8px',borderRadius:999,background:form.status===k?v.bg:'transparent',color:form.status===k?v.color:'#9ca3af',border:form.status===k?`1.5px solid ${v.color}`:'1px solid #e5e7eb',fontWeight:form.status===k?600:400}}>{v.label}</button>
         ))}
       </div>
-      {form.contato&&<div style={{background:'#f0fdf4',border:'1px solid #6ee7b7',borderRadius:7,padding:'8px 12px',marginBottom:10,fontSize:12,color:'#065f46',fontWeight:500}}>
-        📞 {form.contato}
-      </div>}
+
+      {(form.telefone||form.email)&&(
+        <div style={{background:'#f0fdf4',border:'1px solid #6ee7b7',borderRadius:7,padding:'8px 12px',marginBottom:10,fontSize:12,color:'#065f46',fontWeight:500}}>
+          {form.telefone?`📞 ${form.telefone}`:``}{form.telefone&&form.email?' · ':''}{form.email?`✉ ${form.email}`:''}
+        </div>
+      )}
+      {!form.telefone&&!form.email&&(
+        <div style={{background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:7,padding:'8px 12px',marginBottom:10,fontSize:12,color:'#92400e',fontWeight:500}}>
+          🚶 Sem contato — indicado visita presencial
+        </div>
+      )}
+
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
         {[{l:'Telefone',k:'telefone'},{l:'Email',k:'email'},{l:'Administradora',k:'administradora'},{l:'Unidades',k:'unidades',t:'number'}].map(f=>(
           <div key={f.k}>
@@ -288,13 +294,14 @@ function LeadDetail({lead,onUpdate,onClose,onDelete}){
           <select value={form.renda||'Media'} onChange={e=>setForm(p=>({...p,renda:e.target.value}))} style={{fontSize:12}}>
             <option value="Alta">Alto padrão</option>
             <option value="Media">Médio padrão</option>
-            <option value="Baixa">Popular</option>
+            <option value="Baixa">Popular/HIS</option>
           </select>
         </div>
       </div>
-      <div style={{marginBottom:14}}><label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>Observações</label><textarea value={form.observacoes||''} onChange={e=>setForm(p=>({...p,observacoes:e.target.value}))} placeholder="Notas..." style={{fontSize:12,minHeight:56}}/></div>
+      <div style={{marginBottom:14}}><label style={{fontSize:10,color:'#6b7280',display:'block',marginBottom:2,fontWeight:500}}>Observações</label><textarea value={form.observacoes||''} onChange={e=>setForm(p=>({...p,observacoes:e.target.value}))} placeholder="Notas gerais..." style={{fontSize:12,minHeight:56}}/></div>
       <button onClick={salvar} style={{width:'100%',background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontSize:13,fontWeight:600,marginBottom:8}}>{saved?'✓ Salvo!':'Salvar alterações'}</button>
-      <button onClick={()=>{if(confirm('Excluir este lead permanentemente?')){onDelete(lead.id);}}} style={{width:'100%',background:'transparent',color:'#DC2626',border:'1px solid #DC2626',borderRadius:8,padding:'7px',fontSize:12,fontWeight:500,marginBottom:16,cursor:'pointer'}}>🗑 Excluir lead</button>
+      <button onClick={()=>{if(window.confirm('Excluir este lead permanentemente?'))onDelete(lead.id);}} style={{width:'100%',background:'transparent',color:'#DC2626',border:'1px solid #DC2626',borderRadius:8,padding:'7px',fontSize:12,fontWeight:500,marginBottom:16}}>🗑 Excluir lead</button>
+
       <div style={{borderTop:'1px solid #e5e7eb',paddingTop:14}}>
         <div style={{fontSize:13,fontWeight:600,marginBottom:10,color:'#111'}}>Histórico de tratativas</div>
         <div style={{display:'flex',gap:6,marginBottom:12}}>
@@ -316,19 +323,21 @@ function LeadDetail({lead,onUpdate,onClose,onDelete}){
 function Leads({leads,onUpdate,onDelete}){
   const [search,setSearch]=useState('');
   const [fSt,setFSt]=useState('todos');
-  const [fPr,setFPr]=useState('todas');
   const [fRenda,setFRenda]=useState('todas');
   const [sel,setSel]=useState(null);
+
   const filtered=useMemo(()=>leads.filter(l=>{
     const ms=!search||[l.nome,l.cidade,l.bairro,l.administradora].some(x=>(x||'').toLowerCase().includes(search.toLowerCase()));
-    return ms&&(fSt==='todos'||l.status===fSt)&&(fPr==='todas'||l.prioridade===fPr)&&(fRenda==='todas'||l.renda===fRenda);
-  }).sort((a,b)=>new Date(b.atualizadoEm)-new Date(a.atualizadoEm)),[leads,search,fSt,fPr,fRenda]);
+    return ms&&(fSt==='todos'||l.status===fSt)&&(fRenda==='todas'||l.renda===fRenda);
+  }).sort((a,b)=>new Date(b.atualizadoEm)-new Date(a.atualizadoEm)),[leads,search,fSt,fRenda]);
+
   const exportar=()=>{
-    const h=['Nome','Endereço','Bairro','Cidade','Telefone','Email','Administradora','Unidades','Contato','Status Imóvel','Renda','Status CRM','Prioridade','Fonte','Criado em'];
-    const rows=leads.map(l=>[l.nome,l.endereco,l.bairro,l.cidade,l.telefone,l.email,l.administradora,l.unidades||'',l.contato||'',l.status_imovel||'',l.renda||'',STATUS[l.status]?.label||l.status,PRIO[l.prioridade]?.label||l.prioridade,l.fonte,new Date(l.criadoEm).toLocaleDateString('pt-BR')]);
+    const h=['Nome','Endereço','Bairro','Cidade','Telefone','Email','Administradora','Unidades','Renda','Status Imóvel','Status CRM','Prioridade','Fonte','Criado em'];
+    const rows=leads.map(l=>[l.nome,l.endereco,l.bairro,l.cidade,l.telefone,l.email,l.administradora,l.unidades||'',l.renda||'',l.status_imovel||'',STATUS[l.status]?.label||l.status,PRIO[l.prioridade]?.label||l.prioridade,l.fonte,new Date(l.criadoEm).toLocaleDateString('pt-BR')]);
     const csv=[h,...rows].map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));a.download='leads_ll_market.csv';a.click();
   };
+
   return(
     <div style={{display:'flex',gap:0,height:'100%'}}>
       <div style={{flex:1,overflow:'hidden'}}>
@@ -346,7 +355,7 @@ function Leads({leads,onUpdate,onDelete}){
             <option value="todas">Todas as rendas</option>
             <option value="Alta">Alto padrão</option>
             <option value="Media">Médio padrão</option>
-            <option value="Baixa">Popular</option>
+            <option value="Baixa">Popular/HIS</option>
           </select>
         </div>
         {leads.length===0?<div style={{textAlign:'center',padding:'4rem',color:'#9ca3af',fontSize:14}}>Nenhum lead ainda. Use "Prospectar" para buscar condomínios.</div>
@@ -355,24 +364,31 @@ function Leads({leads,onUpdate,onDelete}){
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,background:'#fff',borderRadius:10,overflow:'hidden',border:'1px solid #e5e7eb'}}>
               <thead><tr style={{background:'#f9fafb'}}>
-                {['Nome','Cidade / Bairro','Unid.','Contato','Renda','Status','',''].map(h=>(
+                {['Nome','Cidade / Bairro','Unid.','Contato','Renda','Padrão','Status CRM','Ações'].map(h=>(
                   <th key={h} style={{padding:'9px 10px',textAlign:'left',fontWeight:600,color:'#6b7280',fontSize:11,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>{filtered.map(lead=>(
                 <tr key={lead.id} style={{borderBottom:'1px solid #f3f4f6',background:sel?.id===lead.id?'#f0fdf4':'transparent'}}>
-                  <td style={{padding:'9px 10px',fontWeight:600,color:'#111',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lead.nome}</td>
+                  <td style={{padding:'9px 10px',fontWeight:600,color:'#111',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lead.nome}</td>
                   <td style={{padding:'9px 10px',color:'#6b7280'}}>{lead.cidade}{lead.bairro?` / ${lead.bairro}`:''}</td>
                   <td style={{padding:'9px 10px'}}>{lead.unidades?`~${lead.unidades}`:'-'}</td>
                   <td style={{padding:'9px 10px'}}>
-                    {lead.telefone?<span style={{color:'#059669',fontSize:11}}>📞 {lead.telefone}</span>
+                    {lead.telefone?<span style={{color:'#059669',fontSize:11,fontWeight:500}}>📞 {lead.telefone}</span>
                     :lead.email?<span style={{color:'#6b7280',fontSize:11}}>✉ email</span>
                     :<span style={{color:'#D97706',fontSize:11}}>🚶 Visita</span>}
                   </td>
-                  <td style={{padding:'9px 10px'}}><RendaBadge renda={lead.renda}/></td>
+                  <td style={{padding:'9px 10px'}}><RendaBadge renda={lead.renda||'Media'}/></td>
+                  <td style={{padding:'9px 10px'}}>
+                    <span style={{fontSize:10,fontWeight:600,color:lead.status_imovel==='Lançamento recente'?'#059669':'#6b7280'}}>
+                      {lead.status_imovel==='Lançamento recente'?'🆕 Novo':'🏢 Exist.'}
+                    </span>
+                  </td>
                   <td style={{padding:'9px 10px'}}><Badge status={lead.status}/></td>
-                  <td style={{padding:'9px 10px'}}><button onClick={()=>setSel(sel?.id===lead.id?null:lead)} style={{fontSize:11,color:'#059669',background:'none',border:'none',textDecoration:'underline'}}>{sel?.id===lead.id?'Fechar':'Ver'}</button></td>
-                  <td style={{padding:'9px 10px'}}><button onClick={()=>{if(confirm('Excluir este lead?')){onDelete(lead.id);if(sel?.id===lead.id)setSel(null);}}} style={{fontSize:11,color:'#DC2626',background:'none',border:'none',cursor:'pointer'}}>✕</button></td>
+                  <td style={{padding:'9px 10px',display:'flex',gap:8,alignItems:'center'}}>
+                    <button onClick={()=>setSel(sel?.id===lead.id?null:lead)} style={{fontSize:11,color:'#059669',background:'none',border:'none',textDecoration:'underline'}}>{sel?.id===lead.id?'Fechar':'Ver'}</button>
+                    <button onClick={()=>{if(window.confirm('Excluir este lead?')){onDelete(lead.id);if(sel?.id===lead.id)setSel(null);}}} style={{fontSize:12,color:'#DC2626',background:'none',border:'none',fontWeight:600}}>✕</button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
